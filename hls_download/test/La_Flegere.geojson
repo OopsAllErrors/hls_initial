@@ -1,0 +1,8 @@
+{
+"type": "FeatureCollection",
+"name": "La_Flegere",
+"crs": { "type": "name", "properties": { "name": "urn:ogc:def:crs:OGC:1.3:CRS84" } },
+"features": [
+{ "type": "Feature", "properties": { "Name": "Untitled Polygon", "description": null, "tessellate": 1 }, "geometry": { "type": "Polygon", "coordinates": [ [ [ 6.859485272056509, 45.951879540902972 ], [ 6.859247832242358, 45.910864122684941 ], [ 6.948081348451069, 45.914985129055196 ], [ 6.923005387868841, 45.964457236518221 ], [ 6.859485272056509, 45.951879540902972 ] ] ] } }
+]
+}

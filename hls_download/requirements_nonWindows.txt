@@ -1,0 +1,16 @@
+name: hls
+channels:
+  - defaults
+dependencies:
+  - rasterio
+  - shapely
+  - gdal
+  - pyproj
+  - netcdf4
+  - requests
+  - xarray
+  - zarr
+  - python=3.9
+  - geopandas
+  - imageio
+prefix: C:\Users\jmandel\Anaconda3\envs\hls
