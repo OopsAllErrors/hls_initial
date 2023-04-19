@@ -258,11 +258,7 @@ os.chdir(sys.path[0])  # Switch back to the script directory to execute
 from HLS_Su import hls_subset
 
 # Query CMR-STAC
-#dl = hls_subset(bbox_string, outDir, dates, prods, band_dict, cc)  
-from HLS_Su import hls_download
-mgrs_tiles = ['31TGL', '31TGM', '32TLR', '32TLS']
-#breakpoint()
-dl = hls_download(mgrs_tiles, outDir, dates, prods, band_dict, cc)
+dl = hls_subset(bbox_string, outDir, dates, prods, band_dict, cc)  
 
 #################### PROCESS AND EXPORT REFORMATTED ###########################
 # If user decides to continue downloading the intersecting files:
