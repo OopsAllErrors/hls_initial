@@ -77,7 +77,7 @@ def find(path=os.getcwd(),check_subfols=True):
 def process_image(im,processes):
     reader = rio.open(im)                #Create a reader object
     array = reader.read()                #Ingest the array
-    array[array==-9999] = np.nan         #Remove nodata values
+    array = np.where(array==-9999, np.nan, array)         #Remove nodata values
     array = process(array,processes)     #Put through a processing stack
     #array = array.astype(rio.uint8)      #Fit to 8-bit
     return array
@@ -107,7 +107,12 @@ class granules(object):
                 self.collects[cid].append(file)
             else:
                 self.collects[cid] = [file]
-                self.dates.append(datetime.datetime.strptime(file.split(".")[3],"%Y%jT%H%M%S"))
+                try:
+                    self.dates.append(datetime.datetime.strptime(file.split(".")[2],"%Y%jT%H%M%S"))
+                except ValueError:
+                    self.dates.append(datetime.datetime(2022, 3, 21, 21, 9, 31))
+                    print(file)
+                    
         self.order_historically()
     
     #Sort files by date.
@@ -117,7 +122,7 @@ class granules(object):
         self.order = []
         for date in dateStrings:
             files = [key for key, value in self.collects.items() if date in key]
-            self.order.extend(files)
+            self.order.extend(set(files))
         if self.reversed:
             self.reverse()
     
@@ -156,7 +161,7 @@ class granules(object):
     #
     def create_time_series(self,bands=band_combinations.rgb,processes=stack.simpleRGB):
         numBands = len(bands)
-        
+
         if numBands == 1:
             pass
         
@@ -171,7 +176,7 @@ class granules(object):
             array = process_image(firstBandFile,processes)                  #Open, process and prepare the image for output
             
             arrayShape = list(array.shape)                                         #We can now preallocate memory for the time series
-            timeSeriesShape = [numCollects,array.shape[1],array.shape[2],numBands] #This will be a 4D array with dimensions:
+            timeSeriesShape = [numCollects,arrayShape[1],arrayShape[2],numBands] #This will be a 4D array with dimensions:
             timeSeries = np.zeros(timeSeriesShape)                                 #Time,Band,X,Y
             timeSeries[0,:,:,0] = array                                            #Add images by: timeSeries[collect,:,:,band]
             
@@ -182,21 +187,19 @@ class granules(object):
             array = process_image(thisBand,processes)
             timeSeries[0,:,:,2] = array
             
-            for collectInd,collection in enumerate(self):                   #Now iterate through the entire collection
-                currentCollect = list(collection.keys())[0]                 #
-                imageFiles = list(collection.values())[0]                   #
-                print('  Adding {} to the time series.'.format(currentCollect))
+            for collectInd,collection_name in enumerate(self.order):                   #Now iterate through the entire collection               #
+                imageFiles = list(self.collects[collection_name])                   #
+                print('  Adding {} to the time series.'.format(collection_name))
                 
                 for bandInd,band in enumerate(bands):                       #Iterate through the bands
                     thisBand = [im for im in imageFiles if band in im][0]   #
                     array = process_image(thisBand,processes)
-                    timeSeries[collectInd+1,:,:,bandInd] = array
-            
-            breakpoint()
+                    timeSeries[collectInd,:,:,bandInd] = array
+                
             print('Converting to uint8')
             timeSeries = timeSeries.astype(rio.uint8)
             print('Creating .gif file')
-            imio.imwrite(f"test2.gif",timeSeries,duration=3000)
+            imio.imwrite(f"test2.gif",timeSeries,duration=1000)
                 
                 
             
