@@ -30,6 +30,7 @@ def hls_process(outDir, ROI, qf, scale, of, nd, fileList):
     import pyproj
     from shapely.ops import transform
     from shapely.geometry import box
+    import shapely
     from rasterio.mask import mask
     from rasterio.shutil import copy
     import numpy as np
@@ -92,6 +93,9 @@ def hls_process(outDir, ROI, qf, scale, of, nd, fileList):
         bbox = [float(rr.strip(']').strip('[').strip("'").strip('"').strip(' ')) for rr in ROI.split(',')]
         roi_shape = box(float(bbox[0]), float(bbox[1]), float(bbox[2]), float(bbox[3]))
 
+    if type(roi_shape) ==  shapely.geometry.collection.GeometryCollection:
+        roi_shape == roi_shape.geoms[0]
+
     ######################## AUTHENTICATION ###################################
     # GDAL configs used to successfully access LP DAAC Cloud Assets via vsicurl
     gdal.SetConfigOption("GDAL_HTTP_UNSAFESSL", "YES")
@@ -149,13 +153,18 @@ def hls_process(outDir, ROI, qf, scale, of, nd, fileList):
     for f in file_dict:
         
         # Try to access each item/asset 3 times
+        #breakpoint()
         for retry in range(0,3):
             try:
                 # Read Quality band
-                
-                qa = rio.open([file for file in file_dict[f] if 'Fmask' in file][0])
+                temp_filename = outDir + file_dict[f][0][116:]
+                temp = r.get([file for file in file_dict[f] if 'Fmask' in file][0]).content
+                with open(temp_filename, "wb") as downloaded_file:
+                    downloaded_file.write(temp)
+                qa = rio.open(temp_filename)
 
                 # Convert bbox/geojson from EPSG:4326 to local UTM for scene
+                #breakpoint()
                 utm = pyproj.Proj(qa.crs)                             # Destination CRS read from QA band
                 project = pyproj.Transformer.from_proj(geo_CRS, utm)  # Set up src -> dest transformation
                 roi_UTM = transform(project.transform, roi_shape)     # Apply reprojection to ROI
@@ -179,11 +188,17 @@ def hls_process(outDir, ROI, qf, scale, of, nd, fileList):
                 originalName = qa.name.rsplit('/', 1)[-1] # If only exporting FMASK, use for original name
                 
                 # Loop through and process all other layers (excluding QA)
+                #breakpoint()
                 for b in [file for file in file_dict[f] if 'Fmask' not in file]:
                     z += 1
 
                     # Read file and load in subset
-                    band = rio.open(b)
+                    #breakpoint()
+                    temp_b = r.get(b).content
+                    temp_b_filename = outDir + b[116:]
+                    with open(temp_b_filename, "wb") as temp_b_file:
+                        temp_b_file.write(temp_b)
+                    band = rio.open(temp_b_filename)
                     subset, btransform = rio.mask.mask(band, [roi_UTM], crop=True)
 
                     # Filter by quality if desired
