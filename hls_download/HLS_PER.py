@@ -157,7 +157,7 @@ def hls_process(outDir, ROI, qf, scale, of, nd, fileList):
         for retry in range(0,3):
             try:
                 # Read Quality band
-                temp_filename = outDir + file_dict[f][0][116:]
+                temp_filename = outDir + file_dict[f][0][108:]
                 temp = r.get([file for file in file_dict[f] if 'Fmask' in file][0]).content
                 with open(temp_filename, "wb") as downloaded_file:
                     downloaded_file.write(temp)
@@ -195,7 +195,7 @@ def hls_process(outDir, ROI, qf, scale, of, nd, fileList):
                     # Read file and load in subset
                     #breakpoint()
                     temp_b = r.get(b).content
-                    temp_b_filename = outDir + b[116:]
+                    temp_b_filename = outDir + b[108:]
                     with open(temp_b_filename, "wb") as temp_b_file:
                         temp_b_file.write(temp_b)
                     band = rio.open(temp_b_filename)

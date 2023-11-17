@@ -11,6 +11,9 @@ import numpy as np
 import math
 from imtools import *
 import rasterio as rio
+import imageio
+import matplotlib.pyplot as plt
+import io
 
 '''#########################################################################
 ## General Info
@@ -50,6 +53,17 @@ image_band_names = ['B01','B02','B03','B04','B05','B08','B09','B10','B11','B12',
 lut = {'HLSS30': {'COASTAL-AEROSOL':'B01', 'BLUE':'B02', 'GREEN':'B03', 'RED':'B04', 'RED-EDGE1':'B05', 'RED-EDGE2':'B06', 'RED-EDGE3':'B07', 'NIR-Broad':'B08', 'NIR1':'B8A', 'WATER-VAPOR':'B09', 'CIRRUS':'B10', 'SWIR1':'B11', 'SWIR2':'B12', 'FMASK':'Fmask'},
        'HLSL30': {'COASTAL-AEROSOL':'B01', 'BLUE':'B02', 'GREEN':'B03', 'RED':'B04', 'NIR1':'B05', 'SWIR1':'B06','SWIR2':'B07', 'CIRRUS':'B09', 'TIR1':'B10', 'TIR2':'B11', 'FMASK':'Fmask'}}
 
+#"Recipes" for various vegetation indices that are commonly used for HLS images
+class VI(object):
+    NDVI  = lambda NIR,red:        (NIR-red)/(NIR+red)                                             #Normalized Difference Vegetation Index
+    EVI   = lambda NIR,red,blue:   2.5*(NIR-red)/(NIR+6.0*red-7.5*blue+1)                          #Enhanced Vegetation Index
+    SAVI  = lambda NIR,red:        1.5*(NIR-red)/(NIR+red+0.5)                                     #Soil Adjusted Vegetation Index
+    MSAVI = lambda NIR,red:        (2.0*NIR+1.0*(np.sqrt(2.0*NIR+1.0))**2.0-8.0*(NIR-red))/2.0     #Modified Soil Adjusted Vegetation Index
+    NDMI  = lambda NIR,SWIR1:      (NIR-SWIR1)/(NIR+SWIR1)                                         #Normalized Difference Moisture Index
+    NDWI  = lambda green,NIR:      (green-NIR)/(green+NIR)                                         #Normalized Difference Water Index
+    NBR   = lambda NIR,SWIR2:      (NIR-SWIR2)/(NIR+SWIR2)                                         #Normalized Burn Ratio
+    NBR2  = lambda SWIR1,SWIR2:    (SWIR1-SWIR2)/(SWIR1+SWIR2)                                     #Normalized Burn Ratio 2
+    TVI   = lambda NIR,green,red:  (120.0*(NIR-green)-200.0*(red-green))/2.0                       #Triangular Vegetation Index
 
 '''#########################################################################
 ## Basic functions
@@ -82,6 +96,66 @@ def process_image(im,processes):
     #array = array.astype(rio.uint8)      #Fit to 8-bit
     return array
 
+def get_metadata(tif_path):
+    """
+    Extract metadata from a .tif file.
+
+    Parameters:
+    - tif_path: Path to the .tif file
+
+    Returns:
+    - metadata: Dictionary containing the metadata
+    """
+    with rio.open(tif_path) as src:
+        metadata = src.meta
+        metadata.update(src.tags())  # Add additional tags to the metadata
+        metadata['crs'] = src.crs.to_string()  # Get the Coordinate Reference System (CRS)
+        metadata['transform'] = src.transform.to_gdal()  # Get the affine transformation parameters
+    return metadata
+
+def plot_vi_meta_to_image(vi_array, metadata, vi_choice, cmap="RdYlGn"):
+    """
+    Plots a vegetation index (VI) represented by the given vi_array and incorporates
+    metadata information in the plot title. Saves the plot as a PNG image in memory.
+
+    Parameters:
+    - vi_array (numpy.ndarray): The 2D array containing the vegetation index values to be plotted.
+    - metadata (dict): Metadata information related to the satellite imagery.
+    - vi_choice (str): The name or type of vegetation index being plotted (e.g., NDVI, EVI).
+    - cmap (str, optional): The colormap to be used in the plot. Default is "RdYlGn".
+
+    Returns:
+    - io.BytesIO: A BytesIO object containing the PNG image of the plot.
+
+    Example:
+    plot_buffer = plot_vi_meta_to_image(vi_array, metadata, 'NDVI')
+    """
+    
+    sensing_time = metadata.get('SENSING_TIME', 'N/A')
+    spacecraft_name = metadata.get('SPACECRAFT_NAME', 'N/A')
+    coordinate_system = metadata.get('HORIZONTAL_CS_NAME', 'N/A')
+    spatial_resolution = metadata.get('SPATIAL_RESOLUTION', 'N/A')
+
+    fig, ax = plt.subplots(figsize=(10,10))
+    
+    # Use the result of ax.imshow() for colorbar
+    im = ax.imshow(vi_array, cmap=cmap, vmin=-1, vmax=1) 
+    
+    ax.set_xticks([])  # Remove x-axis tick labels
+    ax.set_yticks([])  # Remove y-axis tick labels
+    
+    # Construct a title using the extracted metadata
+    title = f"{vi_choice} from {spacecraft_name} on {sensing_time}\nCoordinate System: {coordinate_system} | Spatial Resolution: {spatial_resolution}m"
+    ax.set_title(title, fontsize=10)
+    
+    buf = io.BytesIO()
+    plt.savefig(buf, format="png")
+    buf.seek(0)
+    plt.close(fig)
+    
+    return buf
+
+
 #Takes lists of HLS files and turns them into a dictionary divided by collection.
 #  If called, it gives a brief summary of the dataset.
 #  If called with the print() command, it returns a detailed description.
@@ -108,7 +182,7 @@ class granules(object):
             else:
                 self.collects[cid] = [file]
                 try:
-                    self.dates.append(datetime.datetime.strptime(file.split(".")[2],"%Y%jT%H%M%S"))
+                    self.dates.append(datetime.datetime.strptime(file.split(".")[3],"%Y%jT%H%M%S"))
                 except ValueError:
                     self.dates.append(datetime.datetime(2022, 3, 21, 21, 9, 31))
                     print(file)
@@ -200,10 +274,72 @@ class granules(object):
             timeSeries = timeSeries.astype(rio.uint8)
             print('Creating .gif file')
             imio.imwrite(f"test2.gif",timeSeries,duration=1000)
-                
-                
+                            
+    def create_VI_time_series(self,VI_choice = 'EVI',processes=stack.simpleRGB):
+        """
+        Process vegetation index time series for a given VI choice, create a GIF, and save it.
+
+        Parameters:
+        - VI_choice (str, optional): The vegetation index choice. Default is 'EVI'.
+        - processes (int, optional): The number of processes to use for parallel processing. Default is 1.
+
+        Raises:
+        - Prints an error message if an invalid VI choice is provided and defaults to 'EVI'.
+
+        Example:
+        granule.create_VI_time_series(VI_choice = 'NDVI')
+        """
+        metadata_collection = {}
+        vegetation_index_arrays = []
+        acutal_order = []
+        bands = getattr(band_combinations, VI_choice.lower(), None)
+
+        vi_function = getattr(VI, VI_choice, None)
+        if vi_function is None:
+            print(f"Invalid VI value: {VI_choice}. Using default EVI.")
+            vi_function = VI.EVI
+        
+        def generate_gif():
+                frames = []
+                for series, collection_name in zip(vegetation_index_arrays, acutal_order):
+                    metadata = metadata_collection[collection_name]
+                    buf = plot_vi_meta_to_image(series[0], metadata, VI_choice)
+                    frames.append(imageio.imread(buf))
+
+                # Save the frames as a GIF
+                name = VI_choice + metadata.get('SENSING_TIME', 'N/A')
+                imio.imwrite(f"{name}.gif", frames, duration=1000)
+
             
-    
+        # image_files = [file for sublist in self.collects.values() for file in sublist]
+
+        for collect_ind,collection_name in enumerate(self.order):
+            print('Adding {} to the time series.'.format(collection_name))    
+            image_files = list(self.collects[collection_name])                
+            try:
+                bands_arrays = {}
+                for band_id in bands:
+                    try:
+                        # Find the first file in image_files that contains the current band_id
+                        band_file = next(im for im in image_files if band_id in im)
+                        bands_arrays[band_id] = process_image(band_file, processes)
+                    except StopIteration:
+                        # Handle the case where no matching file is found
+                        print(f"File for band {band_id} not found.")
+                        continue
+
+                metadata_collection[collection_name] = get_metadata(band_file)
+
+                VIarray = vi_function(
+                    *[bands_arrays[band] for band in bands]
+                )
+                vegetation_index_arrays.append(VIarray)
+                acutal_order.append(collection_name)
+            except Exception as e:
+                print(e)
+        
+        generate_gif()
+       
     #When called directly, print a summation of the file list.
     def __repr__(self):
         return self.total()
@@ -238,3 +374,7 @@ class granules(object):
 class granule(object):
     def __init__(self,input_list):
         pass
+
+# Usage
+# granule = granules(find())
+# granule.create_VI_time_series(VI_choice = 'EVI')
