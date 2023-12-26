@@ -126,3 +126,12 @@ class stack(object):
 
 class band_combinations(object):
     rgb = ['B04','B03','B02']
+    ndvi = ['B8A', 'B04']
+    evi = ['B8A', 'B04', 'B02']
+    savi = ['B8A', 'B04']
+    msavi = ['B8A', 'B04']
+    ndmi = ['B8A', 'B11']
+    ndwi = ['B03', 'B8A']
+    nbr = ['B8A', 'B12']
+    nbr2 = ['B11', 'B12']
+    tvi = ['B8A', 'B03', 'B04']
